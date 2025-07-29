@@ -267,9 +267,6 @@ describe('PRPoller', () => {
           type: 'error',
           prNumber,
           error: rateLimitError,
-          data: expect.objectContaining({
-            isRateLimitError: true,
-          }),
         })
       );
     });

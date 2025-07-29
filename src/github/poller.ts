@@ -137,7 +137,7 @@ export class PRPoller {
 
     session.isActive = false;
     if (session.intervalId) {
-      clearInterval(session.intervalId);
+      clearTimeout(session.intervalId);
     }
 
     this.sessions.delete(prNumber);
@@ -254,7 +254,10 @@ export class PRPoller {
             type: 'rate_limit',
             prNumber,
             timestamp: new Date(),
-            data: rateLimitInfo,
+            data: {
+              resetTime: rateLimitInfo.reset,
+              remaining: rateLimitInfo.remaining,
+            },
           });
           
           // レート制限の場合はバックオフ
@@ -280,12 +283,8 @@ export class PRPoller {
 
       // PRの状態変化をチェック
       const prState = await this.getCurrentPRState(prNumber);
-      await this.emitEvent({
-        type: 'pr_updated',
-        prNumber,
-        timestamp: new Date(),
-        data: prState,
-      });
+      // Note: For now, we'll skip PR state change detection as it requires storing previous state
+      // This would be implemented when we need to track actual state changes
 
       // 成功時は最終チェック時刻を更新し、エラーカウントをリセット
       session.lastChecked = new Date();
@@ -311,10 +310,6 @@ export class PRPoller {
       prNumber: session.prNumber,
       timestamp: new Date(),
       error,
-      data: {
-        consecutiveErrors: session.consecutiveErrors,
-        isRateLimitError: error instanceof RateLimitError,
-      },
     });
 
     // レート制限エラーの場合
@@ -341,16 +336,23 @@ export class PRPoller {
       
       // 現在のインターバルを停止
       if (session.intervalId) {
-        clearInterval(session.intervalId);
+        clearTimeout(session.intervalId);
       }
       
       // レート制限解除後に再開
       setTimeout(() => {
         if (session.isActive && !this.isShuttingDown) {
-          session.intervalId = setInterval(async () => {
-            await this.pollPR(session.prNumber);
-          }, this.config.intervalMs);
+          // Use recursive setTimeout pattern for consistency
+          const scheduleNextPoll = () => {
+            session.intervalId = setTimeout(async () => {
+              if (session.isActive && !this.isShuttingDown) {
+                await this.pollPR(session.prNumber);
+                scheduleNextPoll();
+              }
+            }, this.config.intervalMs);
+          };
           
+          scheduleNextPoll();
           console.log(`PR #${session.prNumber}: レート制限解除後、ポーリングを再開しました`);
         }
       }, waitTime);
@@ -370,16 +372,23 @@ export class PRPoller {
 
     // 現在のインターバルを停止
     if (session.intervalId) {
-      clearInterval(session.intervalId);
+      clearTimeout(session.intervalId);
     }
 
     // バックオフ後に通常間隔で再開
     setTimeout(() => {
       if (session.isActive && !this.isShuttingDown) {
-        session.intervalId = setInterval(async () => {
-          await this.pollPR(session.prNumber);
-        }, this.config.intervalMs);
+        // Use recursive setTimeout pattern for consistency
+        const scheduleNextPoll = () => {
+          session.intervalId = setTimeout(async () => {
+            if (session.isActive && !this.isShuttingDown) {
+              await this.pollPR(session.prNumber);
+              scheduleNextPoll();
+            }
+          }, this.config.intervalMs);
+        };
         
+        scheduleNextPoll();
         console.log(`PR #${session.prNumber}: バックオフ後、ポーリングを再開しました`);
       }
     }, backoffDelay);

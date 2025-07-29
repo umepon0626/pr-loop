@@ -38,20 +38,17 @@ async function demonstratePoller() {
   });
 
   poller.on('pr_updated', (event) => {
-    console.log(`📝 PR #${event.prNumber} の状態: ${event.data.state}`);
+    console.log(`📝 PR #${event.prNumber} の状態が更新されました`);
   });
 
   poller.on('error', (event) => {
     console.error(`❌ PR #${event.prNumber} でエラーが発生: ${event.error?.message}`);
-    if (event.data?.consecutiveErrors > 1) {
-      console.error(`   連続エラー回数: ${event.data.consecutiveErrors}`);
-    }
   });
 
   poller.on('rate_limit', (event) => {
     console.warn(`⏳ PR #${event.prNumber} でレート制限に達しました`);
-    console.warn(`   リセット時刻: ${event.data.reset.toLocaleString()}`);
-    console.warn(`   残り回数: ${event.data.remaining}/${event.data.limit}`);
+    console.warn(`   リセット時刻: ${event.data.resetTime.toLocaleString()}`);
+    console.warn(`   残り回数: ${event.data.remaining}`);
   });
 
   // デモ用のPR番号（実際の環境では有効なPR番号を使用）

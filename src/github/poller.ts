@@ -108,21 +108,17 @@ export class PRPoller {
     const interval = customInterval || this.config.intervalMs;
     
     // Use recursive setTimeout to avoid overlapping executions
-    const scheduleNextPoll = () => {
-      session.intervalId = setTimeout(async () => {
-        if (session.isActive && !this.isShuttingDown) {
-          await this.pollPR(prNumber);
-          scheduleNextPoll(); // Schedule next poll after current one completes
-        }
-      }, interval);
+    const scheduleNextPoll = async () => {
+      if (session.isActive && !this.isShuttingDown) {
+        await this.pollPR(prNumber);
+        session.intervalId = setTimeout(scheduleNextPoll, interval);
+      }
     };
-    
-    scheduleNextPoll();
 
     console.log(`PR #${prNumber} のポーリングを開始しました (間隔: ${interval}ms)`);
     
     // 初回実行
-    this.pollPR(prNumber);
+    scheduleNextPoll();
   }
 
   /**
@@ -340,22 +336,7 @@ export class PRPoller {
       }
       
       // レート制限解除後に再開
-      setTimeout(() => {
-        if (session.isActive && !this.isShuttingDown) {
-          // Use recursive setTimeout pattern for consistency
-          const scheduleNextPoll = () => {
-            session.intervalId = setTimeout(async () => {
-              if (session.isActive && !this.isShuttingDown) {
-                await this.pollPR(session.prNumber);
-                scheduleNextPoll();
-              }
-            }, this.config.intervalMs);
-          };
-          
-          scheduleNextPoll();
-          console.log(`PR #${session.prNumber}: レート制限解除後、ポーリングを再開しました`);
-        }
-      }, waitTime);
+      this.resumePolling(session, waitTime);
     }
   }
 
@@ -376,22 +357,26 @@ export class PRPoller {
     }
 
     // バックオフ後に通常間隔で再開
+    this.resumePolling(session, backoffDelay);
+  }
+
+  /**
+   * ポーリングを再開する共通メソッド
+   */
+  private resumePolling(session: PollingSession, delay: number = 0): void {
     setTimeout(() => {
       if (session.isActive && !this.isShuttingDown) {
-        // Use recursive setTimeout pattern for consistency
-        const scheduleNextPoll = () => {
-          session.intervalId = setTimeout(async () => {
-            if (session.isActive && !this.isShuttingDown) {
-              await this.pollPR(session.prNumber);
-              scheduleNextPoll();
-            }
-          }, this.config.intervalMs);
+        const scheduleNextPoll = async () => {
+          if (session.isActive && !this.isShuttingDown) {
+            await this.pollPR(session.prNumber);
+            session.intervalId = setTimeout(scheduleNextPoll, this.config.intervalMs);
+          }
         };
         
         scheduleNextPoll();
-        console.log(`PR #${session.prNumber}: バックオフ後、ポーリングを再開しました`);
+        console.log(`PR #${session.prNumber}: ポーリングを再開しました`);
       }
-    }, backoffDelay);
+    }, delay);
   }
 
   /**

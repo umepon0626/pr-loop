@@ -237,14 +237,17 @@ describe('PRPoller', () => {
       
       poller.startPolling(prNumber);
 
-      // ポーリング実行を待つ（少し長めに待機）
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // ポーリング実行を待つ
+      await vi.advanceTimersByTimeAsync(100);
 
       expect(eventHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'rate_limit',
           prNumber,
-          data: rateLimitInfo,
+          data: expect.objectContaining({
+            resetTime: rateLimitInfo.reset,
+            remaining: rateLimitInfo.remaining,
+          }),
         })
       );
     });
@@ -273,20 +276,21 @@ describe('PRPoller', () => {
   });
 
   describe('バックオフ機能', () => {
-    it('連続エラー時にバックオフが適用される', async () => {
+    it('連続エラー時にエラーカウントが正しく増加する', async () => {
       const prNumber = 123;
       const error = new Error('Persistent error');
 
+      vi.mocked(mockGitHubClient.getAllComments).mockRejectedValue(error);
+      
       poller.startPolling(prNumber);
       
-      // 連続してエラーを発生させる
-      vi.mocked(mockGitHubClient.getAllComments).mockRejectedValue(error);
+      // 初回実行を待つ（startPollingで即座に実行される）
+      await vi.advanceTimersByTimeAsync(100);
+      expect(poller.getSession(prNumber)?.consecutiveErrors).toBeGreaterThanOrEqual(1);
 
-      // 複数回のポーリング実行を待つ
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const session = poller.getSession(prNumber);
-      expect(session?.consecutiveErrors).toBeGreaterThan(0);
+      // 2回目のポーリングでエラーカウントが増加することを確認
+      await vi.advanceTimersByTimeAsync(mockPollingConfig.intervalMs);
+      expect(poller.getSession(prNumber)?.consecutiveErrors).toBeGreaterThanOrEqual(2);
     });
   });
 

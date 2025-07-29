@@ -56,6 +56,7 @@ export interface Comment {
   user: {
     login: string;
     type: string;
+    id?: string;
   };
   created_at: string;
   updated_at: string;

@@ -1,0 +1,24 @@
+{
+  "github": {
+    "token": "your_github_token_here",
+    "owner": "your_github_username_or_org",
+    "repo": "your_repository_name",
+    "apiUrl": "https://api.github.com"
+  },
+  "polling": {
+    "intervalMs": 30000,
+    "maxRetries": 3,
+    "backoffMultiplier": 2,
+    "timeoutMs": 10000
+  },
+  "loop": {
+    "maxIterations": 3,
+    "delayBetweenIterationsMs": 120000,
+    "maxConcurrentPRs": 5
+  },
+  "ide": {
+    "kiroPath": "/Applications/Kiro.app",
+    "scriptTimeout": 30000,
+    "maxRetries": 2
+  }
+}

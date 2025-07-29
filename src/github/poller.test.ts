@@ -29,6 +29,7 @@ describe('PRPoller', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     poller = new PRPoller(mockGitHubClient, mockPollingConfig);
     eventHandler = vi.fn();
     
@@ -46,6 +47,7 @@ describe('PRPoller', () => {
 
   afterEach(() => {
     poller.stopAllPolling();
+    vi.useRealTimers();
     vi.clearAllTimers();
   });
 
@@ -182,7 +184,7 @@ describe('PRPoller', () => {
       vi.mocked(mockGitHubClient.getAllComments).mockResolvedValue(mockComments);
 
       // ポーリング実行を待つ
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await vi.advanceTimersByTimeAsync(mockPollingConfig.intervalMs);
 
       expect(eventHandler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -206,7 +208,7 @@ describe('PRPoller', () => {
       vi.mocked(mockGitHubClient.getAllComments).mockRejectedValue(error);
 
       // ポーリング実行を待つ
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await vi.advanceTimersByTimeAsync(mockPollingConfig.intervalMs);
 
       expect(eventHandler).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -258,7 +260,7 @@ describe('PRPoller', () => {
       vi.mocked(mockGitHubClient.getAllComments).mockRejectedValue(rateLimitError);
 
       // ポーリング実行を待つ
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await vi.advanceTimersByTimeAsync(mockPollingConfig.intervalMs);
 
       expect(eventHandler).toHaveBeenCalledWith(
         expect.objectContaining({

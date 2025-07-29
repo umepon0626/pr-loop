@@ -16,6 +16,19 @@ export interface CommentMonitorConfig {
 }
 
 export class CommentMonitor {
+  // Confidence calculation constants
+  private static readonly CONFIDENCE_BASE = 0.5;
+  private static readonly CONFIDENCE_CRITICAL = 0.3;
+  private static readonly CONFIDENCE_MEDIUM = 0.2;
+  private static readonly CONFIDENCE_LOW = 0.1;
+  private static readonly CONFIDENCE_BUG_FIX = 0.2;
+  private static readonly CONFIDENCE_STYLE_IMPROVEMENT = 0.15;
+  private static readonly CONFIDENCE_REFACTOR = 0.1;
+  private static readonly CONFIDENCE_CODE_CHANGE = 0.05;
+  private static readonly CONFIDENCE_FILE_CONTEXT = 0.1;
+  private static readonly CONFIDENCE_SUGGESTION_BLOCK = 0.15;
+  private static readonly CONFIDENCE_MAX = 1.0;
+
   private config: CommentMonitorConfig;
   private commentStatusMap: Map<string, CommentStatus>;
 
@@ -33,13 +46,13 @@ export class CommentMonitor {
    * Check if a comment is from Gemini Code Assist
    */
   isGeminiComment(comment: Comment): boolean {
-    // Check user ID (primary identifier)
-    if (comment.user.login === this.config.geminiUsername) {
+    // Check user ID (most reliable identifier)
+    if (comment.user.id && comment.user.id === this.config.geminiUserId) {
       return true;
     }
 
-    // Fallback check for user ID if available
-    if (comment.user.id && comment.user.id === this.config.geminiUserId) {
+    // Fallback check for username
+    if (comment.user.login === this.config.geminiUsername) {
       return true;
     }
 
@@ -260,24 +273,45 @@ export class CommentMonitor {
   private extractDescription(body: string): string {
     // Remove markdown formatting and extract main description
     const lines = body.split("\n");
-    let description = "";
+    const descriptionLines: string[] = [];
+    let foundStart = false;
 
-    // Skip severity indicator line and get the main description
+    // Skip severity indicator line and collect all consecutive description lines
     for (const line of lines) {
       const trimmed = line.trim();
+
+      // Skip empty lines and markdown elements at the beginning
       if (
-        trimmed &&
-        !trimmed.startsWith("![") &&
-        !trimmed.startsWith("```") &&
-        !trimmed.startsWith("####") &&
-        !trimmed.startsWith("[^")
+        !foundStart &&
+        (!trimmed ||
+          trimmed.startsWith("![") ||
+          trimmed.startsWith("####") ||
+          trimmed.startsWith("[^"))
       ) {
-        description = trimmed;
+        continue;
+      }
+
+      // Stop when we hit a new markdown section
+      if (
+        foundStart &&
+        (trimmed.startsWith("```") ||
+          trimmed.startsWith("####") ||
+          trimmed.startsWith("[^"))
+      ) {
         break;
+      }
+
+      // Collect description lines
+      if (trimmed) {
+        foundStart = true;
+        descriptionLines.push(trimmed);
+      } else if (foundStart) {
+        // Empty line within description - continue collecting but don't add the empty line
+        continue;
       }
     }
 
-    return description || "Code improvement suggestion";
+    return descriptionLines.join(" ").trim() || "Code improvement suggestion";
   }
 
   /**
@@ -394,47 +428,47 @@ export class CommentMonitor {
     severity: string,
     suggestionType: ParsedSuggestion["type"]
   ): number {
-    let confidence = 0.5; // base confidence
+    let confidence = CommentMonitor.CONFIDENCE_BASE;
 
     // Severity-based confidence
     switch (severity) {
       case "critical":
-        confidence += 0.3;
+        confidence += CommentMonitor.CONFIDENCE_CRITICAL;
         break;
       case "medium":
-        confidence += 0.2;
+        confidence += CommentMonitor.CONFIDENCE_MEDIUM;
         break;
       case "low":
-        confidence += 0.1;
+        confidence += CommentMonitor.CONFIDENCE_LOW;
         break;
     }
 
     // Type-based confidence
     switch (suggestionType) {
       case "bug_fix":
-        confidence += 0.2;
+        confidence += CommentMonitor.CONFIDENCE_BUG_FIX;
         break;
       case "style_improvement":
-        confidence += 0.15;
+        confidence += CommentMonitor.CONFIDENCE_STYLE_IMPROVEMENT;
         break;
       case "refactor":
-        confidence += 0.1;
+        confidence += CommentMonitor.CONFIDENCE_REFACTOR;
         break;
       case "code_change":
-        confidence += 0.05;
+        confidence += CommentMonitor.CONFIDENCE_CODE_CHANGE;
         break;
     }
 
     // File context confidence
     if (comment.path && comment.line) {
-      confidence += 0.1; // specific location increases confidence
+      confidence += CommentMonitor.CONFIDENCE_FILE_CONTEXT;
     }
 
     // Code suggestion block increases confidence
     if (comment.body.includes("```suggestion")) {
-      confidence += 0.15;
+      confidence += CommentMonitor.CONFIDENCE_SUGGESTION_BLOCK;
     }
 
-    return Math.min(confidence, 1.0); // cap at 1.0
+    return Math.min(confidence, CommentMonitor.CONFIDENCE_MAX);
   }
 }

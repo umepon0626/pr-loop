@@ -5,6 +5,7 @@
 import { PRPoller } from './poller';
 import { GitHubClient } from './client';
 import { getConfigManager } from '../core/config';
+import { Comment } from '../core/models';
 
 async function demonstratePoller() {
   console.log('=== PR Poller デモンストレーション ===\n');
@@ -30,7 +31,7 @@ async function demonstratePoller() {
   poller.on('new_comments', (event) => {
     console.log(`🔔 PR #${event.prNumber} で新しいコメントを検出:`);
     console.log(`   - ${event.data.count} 件のコメント`);
-    event.data.comments.forEach((comment: any, index: number) => {
+    event.data.comments.forEach((comment: Comment, index: number) => {
       console.log(`   ${index + 1}. ${comment.user.login}: ${comment.body.substring(0, 50)}...`);
     });
     console.log();

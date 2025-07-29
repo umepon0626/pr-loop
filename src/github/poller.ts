@@ -23,13 +23,49 @@ export interface NewCommentsResult {
 
 export type PollingEventType = 'new_comments' | 'pr_updated' | 'error' | 'rate_limit';
 
-export interface PollingEvent {
-  type: PollingEventType;
-  prNumber: number;
-  timestamp: Date;
-  data?: any;
-  error?: Error;
+// Type-safe event data interfaces
+export interface NewCommentsEventData {
+  comments: Comment[];
+  count: number;
 }
+
+export interface PRUpdatedEventData {
+  previousState: PRState;
+  currentState: PRState;
+}
+
+export interface RateLimitEventData {
+  resetTime: Date;
+  remaining: number;
+}
+
+// Discriminated union for type-safe events
+export type PollingEvent = 
+  | {
+      type: 'new_comments';
+      prNumber: number;
+      timestamp: Date;
+      data: NewCommentsEventData;
+    }
+  | {
+      type: 'pr_updated';
+      prNumber: number;
+      timestamp: Date;
+      data: PRUpdatedEventData;
+    }
+  | {
+      type: 'error';
+      prNumber: number;
+      timestamp: Date;
+      error: Error;
+    }
+  | {
+      type: 'rate_limit';
+      prNumber: number;
+      timestamp: Date;
+      data: RateLimitEventData;
+      error?: Error;
+    };
 
 export type PollingEventHandler = (event: PollingEvent) => void | Promise<void>;
 
@@ -70,9 +106,18 @@ export class PRPoller {
     this.sessions.set(prNumber, session);
 
     const interval = customInterval || this.config.intervalMs;
-    session.intervalId = setInterval(async () => {
-      await this.pollPR(prNumber);
-    }, interval);
+    
+    // Use recursive setTimeout to avoid overlapping executions
+    const scheduleNextPoll = () => {
+      session.intervalId = setTimeout(async () => {
+        if (session.isActive && !this.isShuttingDown) {
+          await this.pollPR(prNumber);
+          scheduleNextPoll(); // Schedule next poll after current one completes
+        }
+      }, interval);
+    };
+    
+    scheduleNextPoll();
 
     console.log(`PR #${prNumber} のポーリングを開始しました (間隔: ${interval}ms)`);
     

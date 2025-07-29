@@ -4,6 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { config as loadDotenv } from 'dotenv';
 
 export interface SystemConfig {
   github: GitHubConfig;
@@ -69,8 +70,29 @@ export class ConfigManager {
   private configPath: string;
 
   constructor(configPath?: string) {
+    // .envファイルを読み込む
+    this.loadEnvironmentFile();
+    
     this.configPath = configPath || path.join(process.cwd(), 'config', 'system.json');
     this.config = this.loadConfig();
+  }
+
+  /**
+   * .envファイルを読み込む
+   */
+  private loadEnvironmentFile(): void {
+    try {
+      // プロジェクトルートの.envファイルを読み込む
+      const envPath = path.join(process.cwd(), '.env');
+      if (fs.existsSync(envPath)) {
+        loadDotenv({ path: envPath });
+        console.log('✓ .envファイルを読み込みました');
+      } else {
+        console.log('ℹ .envファイルが見つかりません。環境変数またはデフォルト値を使用します');
+      }
+    } catch (error) {
+      console.warn(`⚠ .envファイルの読み込みに失敗しました: ${error}`);
+    }
   }
 
   /**
@@ -107,10 +129,22 @@ export class ConfigManager {
     if (process.env.GITHUB_REPO) {
       config.github.repo = process.env.GITHUB_REPO;
     }
+    if (process.env.GITHUB_API_URL) {
+      config.github.apiUrl = process.env.GITHUB_API_URL;
+    }
 
     // ポーリング設定
     if (process.env.POLLING_INTERVAL_MS) {
       config.polling.intervalMs = parseInt(process.env.POLLING_INTERVAL_MS, 10);
+    }
+    if (process.env.POLLING_MAX_RETRIES) {
+      config.polling.maxRetries = parseInt(process.env.POLLING_MAX_RETRIES, 10);
+    }
+    if (process.env.POLLING_BACKOFF_MULTIPLIER) {
+      config.polling.backoffMultiplier = parseFloat(process.env.POLLING_BACKOFF_MULTIPLIER);
+    }
+    if (process.env.POLLING_TIMEOUT_MS) {
+      config.polling.timeoutMs = parseInt(process.env.POLLING_TIMEOUT_MS, 10);
     }
 
     // ループ設定
@@ -119,6 +153,20 @@ export class ConfigManager {
     }
     if (process.env.LOOP_DELAY_MS) {
       config.loop.delayBetweenIterationsMs = parseInt(process.env.LOOP_DELAY_MS, 10);
+    }
+    if (process.env.MAX_CONCURRENT_PRS) {
+      config.loop.maxConcurrentPRs = parseInt(process.env.MAX_CONCURRENT_PRS, 10);
+    }
+
+    // IDE設定
+    if (process.env.KIRO_PATH) {
+      config.ide.kiroPath = process.env.KIRO_PATH;
+    }
+    if (process.env.IDE_SCRIPT_TIMEOUT) {
+      config.ide.scriptTimeout = parseInt(process.env.IDE_SCRIPT_TIMEOUT, 10);
+    }
+    if (process.env.IDE_MAX_RETRIES) {
+      config.ide.maxRetries = parseInt(process.env.IDE_MAX_RETRIES, 10);
     }
 
     return config;
@@ -202,13 +250,13 @@ export class ConfigManager {
 
     // GitHub設定のチェック
     if (!this.config.github.token) {
-      errors.push('GitHub tokenが設定されていません');
+      errors.push('GitHub tokenが設定されていません (.envファイルのGITHUB_TOKENを確認してください)');
     }
     if (!this.config.github.owner) {
-      errors.push('GitHub ownerが設定されていません');
+      errors.push('GitHub ownerが設定されていません (.envファイルのGITHUB_OWNERを確認してください)');
     }
     if (!this.config.github.repo) {
-      errors.push('GitHub repoが設定されていません');
+      errors.push('GitHub repoが設定されていません (.envファイルのGITHUB_REPOを確認してください)');
     }
 
     // ポーリング設定のチェック
@@ -231,6 +279,22 @@ export class ConfigManager {
       valid: errors.length === 0,
       errors
     };
+  }
+
+  /**
+   * 設定の読み込み状況を表示
+   */
+  printConfigStatus(): void {
+    console.log('\n=== 設定状況 ===');
+    console.log(`GitHub Token: ${this.config.github.token ? '✓ 設定済み' : '✗ 未設定'}`);
+    console.log(`GitHub Owner: ${this.config.github.owner || '✗ 未設定'}`);
+    console.log(`GitHub Repo: ${this.config.github.repo || '✗ 未設定'}`);
+    console.log(`GitHub API URL: ${this.config.github.apiUrl}`);
+    console.log(`ポーリング間隔: ${this.config.polling.intervalMs}ms`);
+    console.log(`最大リトライ回数: ${this.config.polling.maxRetries}`);
+    console.log(`最大ループ回数: ${this.config.loop.maxIterations}`);
+    console.log(`ループ間隔: ${this.config.loop.delayBetweenIterationsMs}ms`);
+    console.log('================\n');
   }
 }
 

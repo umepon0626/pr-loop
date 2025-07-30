@@ -1,7 +1,7 @@
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface AppleScriptResult {
   success: boolean;
@@ -20,6 +20,9 @@ export interface AppleScriptExecutorOptions {
  * Provides core functionality to execute AppleScript commands from Node.js
  */
 export class AppleScriptExecutor {
+  private static readonly LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+  private static readonly LAUNCH_CHECK_DELAY_MS = 2000;
+  
   private options: Required<AppleScriptExecutorOptions>;
 
   constructor(options: AppleScriptExecutorOptions = {}) {
@@ -39,8 +42,9 @@ export class AppleScriptExecutor {
         `Executing AppleScript: ${script.substring(0, 100)}...`
       );
 
-      const { stdout, stderr } = await execAsync(
-        `osascript -e "${this.escapeScript(script)}"`,
+      const { stdout, stderr } = await execFileAsync(
+        "osascript",
+        ["-e", script],
         {
           timeout: this.options.timeout,
         }
@@ -57,7 +61,7 @@ export class AppleScriptExecutor {
 
       this.log("debug", `AppleScript result: ${result.output}`);
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       return this.handleError(error, script);
     }
   }
@@ -69,7 +73,7 @@ export class AppleScriptExecutor {
     try {
       this.log("debug", `Executing AppleScript file: ${filePath}`);
 
-      const { stdout, stderr } = await execAsync(`osascript "${filePath}"`, {
+      const { stdout, stderr } = await execFileAsync("osascript", [filePath], {
         timeout: this.options.timeout,
       });
 
@@ -84,7 +88,7 @@ export class AppleScriptExecutor {
 
       this.log("debug", `AppleScript file result: ${result.output}`);
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       return this.handleError(error, `file: ${filePath}`);
     }
   }
@@ -96,13 +100,8 @@ export class AppleScriptExecutor {
     const script =
       'tell application "System Events" to return (name of processes) contains "Kiro"';
 
-    try {
-      const result = await this.executeScript(script);
-      return result.success && result.output === "true";
-    } catch (error) {
-      this.log("error", `Failed to check Kiro status: ${error}`);
-      return false;
-    }
+    const result = await this.executeScript(script);
+    return result.success && result.output === "true";
   }
 
   /**
@@ -123,7 +122,7 @@ export class AppleScriptExecutor {
     if (result.success) {
       this.log("info", "Kiro IDE launch command sent successfully");
       // Wait a moment and check if it's running
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, AppleScriptExecutor.LAUNCH_CHECK_DELAY_MS));
       const nowRunning = await this.isKiroRunning();
       return {
         success: true,
@@ -157,19 +156,15 @@ export class AppleScriptExecutor {
     const script =
       'tell application "Kiro" to try to return "responding:" & (count of windows) on error return "not_responding:0"';
 
-    try {
-      const result = await this.executeScript(script);
+    const result = await this.executeScript(script);
 
-      if (result.success && result.output) {
-        const [status, countStr] = result.output.split(":");
-        return {
-          isRunning: true,
-          isResponding: status === "responding",
-          windowCount: parseInt(countStr) || 0,
-        };
-      }
-    } catch (error) {
-      this.log("error", `Failed to get Kiro status details: ${error}`);
+    if (result.success && result.output) {
+      const [status, countStr] = result.output.split(":");
+      return {
+        isRunning: true,
+        isResponding: status === "responding",
+        windowCount: parseInt(countStr, 10) || 0,
+      };
     }
 
     return {
@@ -179,29 +174,18 @@ export class AppleScriptExecutor {
     };
   }
 
-  /**
-   * Escape AppleScript string for command line execution
-   */
-  private escapeScript(script: string): string {
-    return script
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"')
-      .replace(/\n/g, " ")
-      .replace(/\r/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
+
 
   /**
    * Handle AppleScript execution errors
    */
-  private handleError(error: any, context: string): AppleScriptResult {
-    const errorMessage = error.message || "Unknown error";
-    const errorCode = error.code || -1;
+  private handleError(error: unknown, context: string): AppleScriptResult {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorCode = (error as any)?.code || -1;
 
     this.log(
       "error",
-      `AppleScript execution failed for ${context}: ${errorMessage}`
+      `AppleScript execution failed for ${context.substring(0, 200)}...: ${errorMessage}`
     );
 
     // Parse common AppleScript error types
@@ -233,9 +217,8 @@ export class AppleScriptExecutor {
     level: "debug" | "info" | "warn" | "error",
     message: string
   ): void {
-    const levels = { debug: 0, info: 1, warn: 2, error: 3 };
-    const currentLevel = levels[this.options.logLevel];
-    const messageLevel = levels[level];
+    const currentLevel = AppleScriptExecutor.LOG_LEVELS[this.options.logLevel];
+    const messageLevel = AppleScriptExecutor.LOG_LEVELS[level];
 
     if (messageLevel >= currentLevel) {
       const timestamp = new Date().toISOString();

@@ -38,7 +38,7 @@ describe('AppleScriptExecutor', () => {
       
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
-      expect(typeof result.error).toBe('string');
+      expect(result.error).toMatch(/syntax_error/);
     });
 
     it('should handle Kiro status check', async () => {

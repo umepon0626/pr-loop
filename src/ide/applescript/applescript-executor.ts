@@ -22,7 +22,7 @@ export interface AppleScriptExecutorOptions {
 export class AppleScriptExecutor {
   private static readonly LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
   private static readonly LAUNCH_CHECK_DELAY_MS = 2000;
-  
+
   private options: Required<AppleScriptExecutorOptions>;
 
   constructor(options: AppleScriptExecutorOptions = {}) {
@@ -121,9 +121,19 @@ export class AppleScriptExecutor {
 
     if (result.success) {
       this.log("info", "Kiro IDE launch command sent successfully");
-      // Wait a moment and check if it's running
-      await new Promise((resolve) => setTimeout(resolve, AppleScriptExecutor.LAUNCH_CHECK_DELAY_MS));
-      const nowRunning = await this.isKiroRunning();
+      
+      // Poll for Kiro to start with timeout
+      const launchTimeout = 5000; // 5 seconds
+      const pollInterval = 500; // 500 ms
+      const startTime = Date.now();
+      let nowRunning = false;
+
+      while (Date.now() - startTime < launchTimeout) {
+        nowRunning = await this.isKiroRunning();
+        if (nowRunning) break;
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+
       return {
         success: true,
         output: nowRunning ? "launched" : "launch_attempted",
@@ -174,18 +184,21 @@ export class AppleScriptExecutor {
     };
   }
 
-
-
   /**
    * Handle AppleScript execution errors
    */
   private handleError(error: unknown, context: string): AppleScriptResult {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    const errorCode = (error as any)?.code || -1;
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    const code = (error as any)?.code;
+    const errorCode = typeof code === "number" ? code : -1;
 
     this.log(
       "error",
-      `AppleScript execution failed for ${context.substring(0, 200)}...: ${errorMessage}`
+      `AppleScript execution failed for ${context.substring(
+        0,
+        200
+      )}...: ${errorMessage}`
     );
 
     // Parse common AppleScript error types

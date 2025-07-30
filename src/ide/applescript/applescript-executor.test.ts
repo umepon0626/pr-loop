@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { promises as fs } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { AppleScriptExecutor } from './applescript-executor';
 
 describe('AppleScriptExecutor', () => {
@@ -18,18 +21,13 @@ describe('AppleScriptExecutor', () => {
   });
 
   describe('basic functionality', () => {
-    it('should handle simple AppleScript execution', async () => {
+    it('should return success and output for a valid script', async () => {
       const executor = new AppleScriptExecutor();
       const result = await executor.executeScript('return "test"');
       
-      expect(result).toHaveProperty('success');
-      expect(typeof result.success).toBe('boolean');
-      
-      if (result.success) {
-        expect(result.output).toBe('test');
-      } else {
-        expect(result.error).toBeDefined();
-      }
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('test');
+      expect(result.error).toBeUndefined();
     });
 
     it('should handle error cases gracefully', async () => {
@@ -60,7 +58,21 @@ describe('AppleScriptExecutor', () => {
       expect(typeof status.windowCount).toBe('number');
     });
 
-    it('should handle file execution', async () => {
+    it('should execute a script from a file successfully', async () => {
+      const tempDir = await fs.mkdtemp(join(tmpdir(), 'applescript-test-'));
+      const scriptPath = join(tempDir, 'test.scpt');
+      await fs.writeFile(scriptPath, 'return "hello from file"');
+
+      const executor = new AppleScriptExecutor();
+      const result = await executor.executeScriptFile(scriptPath);
+
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('hello from file');
+
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it('should handle file execution errors', async () => {
       const executor = new AppleScriptExecutor();
       const result = await executor.executeScriptFile('/nonexistent/file.scpt');
       
